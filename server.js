@@ -34,7 +34,8 @@ app.use(passport.session());
 passport.use(new GoogleStrategy({
     clientID: process.env.GOOGLE_CLIENT_ID,
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    callbackURL: "/auth/google/callback",
+    // Utilise une URL ABSOLUE pour le callback, définie dans le .env (voir instructions ci-dessous)
+    callbackURL: process.env.GOOGLE_CALLBACK_URL,
   },
   async (accessToken, refreshToken, profile, done) => {
     let user = await User.findOne({ googleId: profile.id });
@@ -94,3 +95,21 @@ app.get('/logout', (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Serveur en cours sur le port ${PORT}`));
+
+/*
+-----------------------------------------------
+Instructions pour les variables d'environnement
+-----------------------------------------------
+
+Sur Render (DASHBOARD > Environment) :
+- GOOGLE_CALLBACK_URL=https://notes-organizer2.onrender.com/auth/google/callback
+
+En local (dans le fichier .env) :
+- GOOGLE_CALLBACK_URL=http://localhost:3000/auth/google/callback
+
+Vérifie aussi que ta Google Cloud Console contient exactement :
+- Origine JS autorisée : https://notes-organizer.netlify.app
+- URI de redirection autorisée : https://notes-organizer2.onrender.com/auth/google/callback
+
+-----------------------------------------------
+*/
