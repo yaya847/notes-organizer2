@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Notes Organizer</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        /* ---- MODAL DE CONNEXION GOOGLE (nouvelle version épurée) ---- */
+        #login-modal {
+            position: fixed;
+            left:0; top:0; width:100vw; height:100vh;
+            background: rgba(40,40,40,0.5);
+            z-index: 1000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: opacity 0.3s;
+        }
+        #login-modal.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+        .login-container {
+            max-width: 370px;
+            width: 92vw;
+            margin: 0 auto;
+            background: #fff;
+            border-radius: 16px;
+            box-shadow: 0 8px 40px rgba(0,0,0,0.17);
+            padding: 2.3rem 2rem 2rem 2rem;
+            text-align: center;
+            animation: popin 0.32s cubic-bezier(.18,.89,.32,1.28);
+        }
+        @keyframes popin {
+            0% { transform: scale(0.85); opacity:0; }
+            100% { transform: scale(1); opacity:1; }
+        }
+        .login-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: #4285F4;
+            color: #fff;
+            font-weight: 600;
+            border: none;
+            border-radius: 5px;
+            padding: 12px 24px;
+            font-size: 1.09rem;
+            cursor: pointer;
+            box-shadow: 0 1px 4px #ddd;
+            text-decoration: none;
+            transition: background 0.2s, transform 0.1s;
+        }
+        .login-btn:hover {
+            background: #2353c5;
+            transform: translateY(-2px) scale(1.03);
+        }
+        .google-logo {
+            height: 22px;
+            margin-right: 10px;
+            vertical-align: middle;
+        }
+        @media (max-width: 500px) {
+            .login-container { padding: 1.2rem 6vw; }
+        }
+        /* ---- FIN MODAL DE CONNEXION GOOGLE ---- */
+    </style>
+</head>
+<body>
+    <div id="background"></div>
+    <nav id="main-nav">
+        <a href="index.html" class="nav-link">Home</a>
+        <h1>Notes Organizer</h1>
+        <a href="changelog.html" class="nav-link">Update notes</a>
+    </nav>
+    <div id="search-bar-container">
+        <input type="text" id="search-bar" placeholder="Search for a note, category or folder...">
+    </div>
+    <section id="category-creation">
+        <h2>Create a new category or folder</h2>
+        <input type="text" id="new-category-name" placeholder="Category or folder name">
+        <div id="keyword-suggestions"></div>
+        <button id="create-category-button">Create category/note</button>
+        <button id="create-folder-button">Create folder</button>
+        <div id="breadcrumb"></div>
+    </section>
+    <section id="notes-container">
+        <h2>Contenu</h2>
+        <!-- Ici viendront tes notes -->
+    </section>
+    <div id="customization-panel">
+        <div id="panel-toggle"></div>
+        <div id="panel-content">
+            <h2>Customize</h2>
+            <label for="background-color">Background Color:</label>
+            <input type="color" id="background-color" value="#ffffff">
+            <label for="background-opacity">Opacity:</label>
+            <input type="range" id="background-opacity" min="0" max="1" step="0.1" value="1">
+        </div>
+    </div>
+
+    <!-- MODAL DE CONNEXION GOOGLE (nouvelle version propre) -->
+    <div id="login-modal">
+      <div class="login-container">
+        <h2>Connexion à Notes Organizer</h2>
+        <p style="color:#666; margin-bottom:24px;">Connectez-vous pour accéder à vos notes.</p>
+        <a href="http://localhost:3000/auth/google" class="login-btn">
+          Se connecter avec Google
+        </a>
+      </div>
+    </div>
+    <!-- FIN MODAL CONNEXION -->
+
+    <script src="script.js"></script>
+    <script>
+        // Vérifie l'état de connexion via /me et masque le modal si connecté
+        window.addEventListener('DOMContentLoaded', () => {
+            fetch('/me')
+                .then(res => res.json())
+                .then(data => {
+                    if (data.loggedIn) {
+                        document.getElementById('login-modal').classList.add('hidden');
+                    } else {
+                        document.getElementById('login-modal').classList.remove('hidden');
+                    }
+                });
+        });
+    </script>
+</body>
+</html>
