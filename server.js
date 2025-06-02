@@ -21,6 +21,13 @@ const UserSchema = new mongoose.Schema({
 });
 const User = mongoose.model('User', UserSchema);
 
+// Schéma pour stocker les notes/arborescence par utilisateur
+const NoteSchema = new mongoose.Schema({
+  userId: String, // googleId
+  tree: mongoose.Schema.Types.Mixed // toute la structure des notes/dossiers
+});
+const Note = mongoose.model('Note', NoteSchema);
+
 // Sessions
 app.use(session({
   secret: process.env.SESSION_SECRET,
@@ -34,7 +41,7 @@ app.use(passport.session());
 passport.use(new GoogleStrategy({
     clientID: process.env.GOOGLE_CLIENT_ID,
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    // Utilise une URL ABSOLUE pour le callback, définie dans le .env (voir instructions ci-dessous)
+    // Utilise une URL ABSOLUE pour le callback, définie dans le .env
     callbackURL: process.env.GOOGLE_CALLBACK_URL,
   },
   async (accessToken, refreshToken, profile, done) => {
@@ -66,6 +73,24 @@ app.get('/me', (req, res) => {
   } else {
     res.json({ loggedIn: false });
   }
+});
+
+// --- NOUVEAUTÉ : API pour récupérer les notes de l'utilisateur connecté
+app.get('/api/notes', async (req, res) => {
+  if (!req.user) return res.json({ success: false, tree: null });
+  const noteDoc = await Note.findOne({ userId: req.user.googleId });
+  res.json({ success: true, tree: noteDoc ? noteDoc.tree : null });
+});
+
+// --- NOUVEAUTÉ : API pour sauvegarder les notes
+app.post('/api/notes', express.json(), async (req, res) => {
+  if (!req.user) return res.json({ success: false });
+  await Note.findOneAndUpdate(
+    { userId: req.user.googleId },
+    { tree: req.body.tree },
+    { upsert: true }
+  );
+  res.json({ success: true });
 });
 
 // Routes d'authentification
