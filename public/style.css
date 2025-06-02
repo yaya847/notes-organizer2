@@ -379,3 +379,26 @@ body {
     font-style: italic;
     color: #333;
 }
+
+.favorite-star {
+    cursor: pointer;
+    vertical-align: middle;
+    margin-right: 8px;
+    fill: #ccc;
+    transition: fill 0.25s, transform 0.18s;
+    transform: scale(1);
+    display: inline-block;
+}
+.favorite-star.active {
+    fill: #FFC107;
+    filter: drop-shadow(0 0 4px #FFD70077);
+}
+.favorite-star.pulse {
+    animation: star-pulse 0.35s cubic-bezier(.54,1.6,.46,.96);
+}
+@keyframes star-pulse {
+    0% { transform: scale(1); }
+    40% { transform: scale(1.35); }
+    70% { transform: scale(0.94);}
+    100% { transform: scale(1);}
+}

@@ -12,7 +12,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const backgroundColorInput = document.getElementById('background-color');
     const backgroundOpacityInput = document.getElementById('background-opacity');
     const background = document.getElementById('background');
-    const searchBar = document.getElementById('search-bar'); // NOUVEAU
+    const searchBar = document.getElementById('search-bar');
 
     let keywords = ['film', 'movie', 'rendez-vous', 'meeting', 'soirée', 'party'];
 
@@ -23,19 +23,37 @@ document.addEventListener('DOMContentLoaded', function() {
     // Variable pour le filtre de recherche
     let currentSearch = "";
 
-    function saveData() {
+    // Fonction pour garantir la propriété favorite partout (y compris après connexion Google)
+    function addFavoriteFieldRecursively(folderOrCategory) {
+        if (!folderOrCategory) return;
+        if (folderOrCategory.type === "folder") {
+            if (folderOrCategory.favorite === undefined) folderOrCategory.favorite = false;
+            if (Array.isArray(folderOrCategory.children)) {
+                folderOrCategory.children.forEach(addFavoriteFieldRecursively);
+            }
+        }
+        if (folderOrCategory.type === "category") {
+            if (folderOrCategory.favorite === undefined) folderOrCategory.favorite = false;
+        }
+    }
+
+    function saveData(pushCloud = true) {
         localStorage.setItem('notesTreeV2', JSON.stringify(root));
         localStorage.setItem('backgroundColor', background.style.backgroundColor);
         localStorage.setItem('backgroundImage', background.style.backgroundImage);
         localStorage.setItem('backgroundSize', background.style.backgroundSize);
         localStorage.setItem('backgroundRepeat', background.style.backgroundRepeat);
         localStorage.setItem('backgroundOpacity', background.style.opacity);
+        if (pushCloud && window._userLoggedIn) {
+            pushNotesToCloud();
+        }
     }
     function loadData() {
         const data = localStorage.getItem('notesTreeV2');
         if (data) {
             root = JSON.parse(data);
         }
+        addFavoriteFieldRecursively(root);
         if (localStorage.getItem('backgroundColor')) {
             background.style.backgroundColor = localStorage.getItem('backgroundColor');
             backgroundColorInput.value = localStorage.getItem('backgroundColor');
@@ -53,6 +71,30 @@ document.addEventListener('DOMContentLoaded', function() {
             background.style.opacity = localStorage.getItem('backgroundOpacity');
             backgroundOpacityInput.value = localStorage.getItem('backgroundOpacity');
         }
+    }
+
+    // Synchronisation cloud => local après login Google
+    function syncWithCloudAndRender() {
+        fetch('/api/notes')
+            .then(res => res.json())
+            .then(data => {
+                if (data && data.success && data.tree) {
+                    root = data.tree;
+                    addFavoriteFieldRecursively(root); // Pour garantir la clé partout
+                    saveData(false); // Mets à jour le localStorage sans POST tout de suite
+                }
+                if (!root || !root.children) root = { type: "folder", name: "Racine", children: [] };
+                currentFolder = root;
+                folderStack = [];
+                render();
+            });
+    }
+    function pushNotesToCloud() {
+        fetch('/api/notes', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tree: root })
+        });
     }
 
     function renderBreadcrumb() {
@@ -77,19 +119,29 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // --- FONCTION DE RECHERCHE RECURSIVE ---
+    // --- GESTION FAVORI (étoile SVG animée) ---
+    function createStarIcon(isFavorite) {
+        const star = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        star.setAttribute("viewBox", "0 0 24 24");
+        star.setAttribute("width", "24");
+        star.setAttribute("height", "24");
+        star.classList.add("favorite-star");
+        if (isFavorite) star.classList.add("active");
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        path.setAttribute("d", "M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z");
+        star.appendChild(path);
+        return star;
+    }
+
     function searchRecursive(folder, searchTerm) {
         let results = [];
-
         folder.children.forEach(item => {
             if (item.type === "folder") {
-                if (item.name.toLowerCase().includes(searchTerm)) {
+                if (item.name && item.name.toLowerCase().includes(searchTerm)) {
                     results.push({ ...item, _parent: folder });
                 }
-                // Rechercher aussi dans les sous-dossiers
                 results = results.concat(searchRecursive(item, searchTerm));
             } else if (item.type === "category") {
-                // Recherche dans le nom de la catégorie, le titre, le contenu, films, etc.
                 let match = false;
                 if (item.categoryName && item.categoryName.toLowerCase().includes(searchTerm)) match = true;
                 if (item.noteTitle && item.noteTitle.toLowerCase().includes(searchTerm)) match = true;
@@ -108,42 +160,48 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (match) results.push({ ...item, _parent: folder });
             }
         });
-
         return results;
     }
 
-    // --- AFFICHAGE DU CONTENU (avec filtre si recherche) ---
     function render() {
         renderBreadcrumb();
         notesContainer.innerHTML = '';
 
         let displayChildren = currentFolder.children;
 
-        // Si recherche active, afficher seulement les résultats
         if (currentSearch.length > 0) {
             let searchResults = searchRecursive(root, currentSearch.toLowerCase());
             if (searchResults.length === 0) {
                 notesContainer.innerHTML = "<p style='margin-top:35px;font-size:1.12em;color:#888;'>Aucun résultat trouvé.</p>";
                 return;
             }
-            // On affiche tous les résultats
             displayChildren = searchResults;
         }
 
-        // 1. Affiche les dossiers
+        // Affiche les dossiers
         displayChildren.forEach((item, idx) => {
             if (item.type === "folder") {
                 const div = document.createElement('div');
                 div.className = "folder";
+                if (item.favorite === undefined) item.favorite = false;
+                const star = createStarIcon(item.favorite);
+                star.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    item.favorite = !item.favorite;
+                    star.classList.toggle('active', item.favorite);
+                    star.classList.add('pulse');
+                    setTimeout(() => star.classList.remove('pulse'), 350);
+                    saveData();
+                });
                 div.innerHTML = `<span class="folder-icon">📁</span><span class="item-title">${item.name}</span>`;
+                div.prepend(star);
                 div.addEventListener('click', function(e) {
-                    if (e.target.classList.contains('delete-folder')) return;
-                    if (currentSearch.length > 0) return; // Pas de navigation en mode recherche
+                    if (e.target.classList.contains('delete-folder') || e.target.classList.contains('favorite-star')) return;
+                    if (currentSearch.length > 0) return;
                     folderStack.push(currentFolder);
                     currentFolder = item;
                     render();
                 });
-                // Bouton supprimer dossier
                 const delBtn = document.createElement('button');
                 delBtn.className = "delete-folder";
                 delBtn.textContent = "Delete";
@@ -158,21 +216,34 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
 
-        // 2. Affiche les catégories/notes
+        // Affiche les catégories/notes
         displayChildren.forEach((item, idx) => {
             if (item.type === "category") {
                 const categoryDiv = document.createElement('div');
                 categoryDiv.classList.add('category');
-                let categoryHTML = `<h3>${item.categoryName}</h3>`;
+                if (item.favorite === undefined) item.favorite = false;
+                const star = createStarIcon(item.favorite);
+                star.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    item.favorite = !item.favorite;
+                    star.classList.toggle('active', item.favorite);
+                    star.classList.add('pulse');
+                    setTimeout(() => star.classList.remove('pulse'), 350);
+                    saveData();
+                });
+                categoryDiv.appendChild(star);
 
-                if (item.categoryName.toLowerCase().includes('film') || item.categoryName.toLowerCase().includes('movie')) {
+                let categoryHTML = `<h3>${item.categoryName || ''}</h3>`;
+
+                if (item.categoryName && (item.categoryName.toLowerCase().includes('film') || item.categoryName.toLowerCase().includes('movie'))) {
                     categoryHTML += `<button class="add-film">Add Film</button>
                         <div class="film-entries"></div>`;
                 } else if (
-                    item.categoryName.toLowerCase().includes('rendez-vous') ||
+                    item.categoryName &&
+                    (item.categoryName.toLowerCase().includes('rendez-vous') ||
                     item.categoryName.toLowerCase().includes('meeting') ||
                     item.categoryName.toLowerCase().includes('soirée') ||
-                    item.categoryName.toLowerCase().includes('party')
+                    item.categoryName.toLowerCase().includes('party'))
                 ) {
                     categoryHTML += `
                         <div class="event-details">
@@ -187,7 +258,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     `;
                 }
                 categoryHTML += `<button class="delete-category">Delete</button>`;
-                categoryDiv.innerHTML = categoryHTML;
+                categoryDiv.innerHTML += categoryHTML;
 
                 if (item.films && categoryDiv.querySelector('.film-entries')) {
                     const filmEntriesDiv = categoryDiv.querySelector('.film-entries');
@@ -218,7 +289,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
                 categoryDiv.querySelectorAll('input, textarea').forEach((el, subIdx) => {
                     el.addEventListener('input', function() {
-                        if (item.categoryName.toLowerCase().includes('film') || item.categoryName.toLowerCase().includes('movie')) {
+                        if (item.categoryName && (item.categoryName.toLowerCase().includes('film') || item.categoryName.toLowerCase().includes('movie'))) {
                             if (el.placeholder === "Nom du film" || el.placeholder === "Date de sortie" || el.placeholder === "Note /10") {
                                 const filmIdx = Array.from(categoryDiv.querySelectorAll('.film-entry')).indexOf(el.closest('.film-entry'));
                                 if (el.placeholder === "Nom du film") item.films[filmIdx].name = el.value;
@@ -226,10 +297,11 @@ document.addEventListener('DOMContentLoaded', function() {
                                 if (el.placeholder === "Note /10") item.films[filmIdx].note = el.value;
                             }
                         } else if (
-                            item.categoryName.toLowerCase().includes('rendez-vous') ||
+                            item.categoryName &&
+                            (item.categoryName.toLowerCase().includes('rendez-vous') ||
                             item.categoryName.toLowerCase().includes('meeting') ||
                             item.categoryName.toLowerCase().includes('soirée') ||
-                            item.categoryName.toLowerCase().includes('party')
+                            item.categoryName.toLowerCase().includes('party'))
                         ) {
                             if (el.placeholder === "Nom") item.eventName = el.value;
                             if (el.placeholder === "Date (YYYY-MM-DD)") item.eventDate = el.value;
@@ -269,7 +341,7 @@ document.addEventListener('DOMContentLoaded', function() {
     createCategoryButton.addEventListener('click', function() {
         const categoryName = newCategoryNameInput.value.trim();
         if (!categoryName) return;
-        currentFolder.children.push({ type: "category", categoryName });
+        currentFolder.children.push({ type: "category", categoryName, favorite: false });
         newCategoryNameInput.value = "";
         saveData();
         render();
@@ -278,7 +350,7 @@ document.addEventListener('DOMContentLoaded', function() {
     createFolderButton.addEventListener('click', function() {
         const name = newCategoryNameInput.value.trim();
         if (!name) return;
-        currentFolder.children.push({ type: "folder", name, children: [] });
+        currentFolder.children.push({ type: "folder", name, children: [], favorite: false });
         newCategoryNameInput.value = "";
         saveData();
         render();
@@ -321,7 +393,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    // GESTION RECHERCHE
     if (searchBar) {
         searchBar.addEventListener('input', function(e) {
             currentSearch = e.target.value.trim();
@@ -329,9 +400,25 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    loadData();
-    if (!root || !root.children) root = { type: "folder", name: "Racine", children: [] };
-    currentFolder = root;
-    folderStack = [];
-    render();
+    // Chargement initial (en mode local par défaut, cloud si connecté)
+    window._userLoggedIn = false;
+    window.checkLoginAndLoad = function() {
+        fetch('/me')
+            .then(res => res.json())
+            .then(data => {
+                window._userLoggedIn = !!data.loggedIn;
+                if (data.loggedIn) {
+                    document.getElementById('login-modal').classList.add('hidden');
+                    syncWithCloudAndRender();
+                } else {
+                    document.getElementById('login-modal').classList.remove('hidden');
+                    loadData();
+                    currentFolder = root;
+                    folderStack = [];
+                    render();
+                }
+            });
+    };
+
+    window.checkLoginAndLoad();
 });
